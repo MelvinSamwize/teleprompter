@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Teleprompter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17120F; --panel:#211A16; --line:#3A302A; --ink:#F6EEE4; --dim:#8F8176;
+    --accent:#C05540; --accent2:#E8856C; --ok:#6DB88A; --fs:54px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,sans-serif;overflow:hidden}
+  button,select{font:inherit;color:inherit}
+  #app{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+  header{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--line);font-size:13px;color:var(--dim)}
+  header .brand{font-family:'Plus Jakarta Sans';font-weight:800;color:var(--accent2);letter-spacing:.02em;margin-right:6px}
+  header select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;max-width:280px}
+  .btn{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;white-space:nowrap;color:inherit;text-decoration:none;display:inline-block}
+  .btn:hover{border-color:var(--dim)}
+  .btn.on{border-color:var(--accent2);color:var(--accent2)}
+  .sp{flex:1}
+
+  #stage{position:relative;display:flex;flex-direction:column;align-items:center;padding:3.5vh 6vw 0;overflow:hidden}
+  #tag{font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent2);font-weight:700;margin-bottom:2.2vh;min-height:1em}
+  #cur{font-family:'Plus Jakarta Sans';font-weight:700;font-size:var(--fs);line-height:1.34;max-width:1150px;text-align:center}
+  #cur .ln{display:block}
+  #cur .dir{display:block;font-family:'Inter';font-style:italic;font-weight:600;color:var(--accent2);font-size:.42em;margin:.5em 0;letter-spacing:.02em}
+  #next{margin-top:4.5vh;color:var(--dim);font-size:calc(var(--fs) * .4);line-height:1.45;max-width:900px;text-align:center;opacity:.65}
+  #next b{display:block;font-size:11px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;margin-bottom:.6em}
+  body.mirror #cur,body.mirror #next,body.mirror #tag{transform:scaleX(-1)}
+
+  /* Följ rösten: hela blocket som ord, det sagda tonas ner, raden du är på hålls uppe vid kameran */
+  body.voice #cur{max-height:60vh;overflow:hidden;width:100%;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 7%,#000 82%,transparent 100%)}
+  body.voice #cur .ln{padding:.04em 0}
+  body.voice #next{display:none}
+  .w{transition:color .18s;cursor:pointer;border-radius:.12em}
+  .w.said{color:#5E534C}
+  .w.now{color:var(--accent2);text-decoration:underline;text-decoration-thickness:4px;text-underline-offset:.16em}
+  #vstat{display:none;align-items:center;gap:7px;font-weight:600;color:var(--dim)}
+  body.voice #vstat{display:flex}
+  #vstat i{width:9px;height:9px;border-radius:50%;background:var(--dim)}
+  #vstat.on i{background:var(--ok);box-shadow:0 0 0 4px rgba(109,184,138,.2)}
+  #vstat.on{color:var(--ok)}
+  #heard{position:absolute;left:18px;bottom:40px;max-width:40vw;font-size:13px;color:var(--dim);opacity:.8;display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  body.voice #heard{display:block}
+
+  #dots{position:absolute;left:0;right:0;bottom:16px;display:flex;justify-content:center;gap:8px}
+  #dots i{width:9px;height:9px;border-radius:50%;background:var(--line);cursor:pointer}
+  #dots i.done{background:var(--dim)}
+  #dots i.now{background:var(--accent2);transform:scale(1.3)}
+
+  #cam{position:absolute;right:18px;bottom:40px;width:250px;aspect-ratio:16/9;object-fit:cover;border-radius:12px;background:#000;transform:scaleX(-1);border:1px solid var(--line)}
+  body.audio #cam{display:none}
+  body.rec #cam{border:3px solid var(--accent)}
+
+  #count{position:absolute;bottom:12vh;left:50%;transform:translateX(-50%);width:120px;height:120px;border-radius:50%;border:4px solid var(--accent);display:none;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans';font-weight:800;font-size:64px;color:var(--accent2);background:rgba(23,18,15,.85)}
+  #count.show{display:flex}
+
+  #flash{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-weight:700;font-size:14px;padding:7px 16px;border-radius:99px;opacity:0;transition:opacity .25s;pointer-events:none}
+  #flash.show{opacity:1}
+
+  footer{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line);font-size:13px;color:var(--dim);flex-wrap:wrap}
+  footer select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:210px}
+  #meter{width:110px;height:8px;border-radius:99px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+  #meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .06s}
+  #rec{background:var(--accent);border:none;color:#fff;font-family:'Plus Jakarta Sans';font-weight:800;font-size:15px;padding:11px 22px;border-radius:99px;cursor:pointer;display:flex;align-items:center;gap:9px}
+  #rec .dot{width:11px;height:11px;border-radius:50%;background:#fff}
+  body.rec #rec .dot{border-radius:2px}
+  #timer{font-family:'Plus Jakarta Sans';font-weight:700;font-size:16px;color:var(--ink);min-width:54px;text-align:right}
+  body.rec #timer{color:var(--accent2)}
+  #hint{font-size:12px}
+  body.rec .hide-rec{display:none!important}
+
+  .modal{position:fixed;inset:0;background:rgba(10,8,6,.78);display:none;align-items:center;justify-content:center;z-index:10;padding:24px}
+  .modal.show{display:flex}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;width:min(760px,100%);max-height:92vh;overflow:auto}
+  .card h2{font-family:'Plus Jakarta Sans';font-size:20px;margin-bottom:10px}
+  .card p{color:var(--dim);font-size:14px;line-height:1.55;margin-bottom:12px}
+  .card video,.card audio{width:100%;border-radius:10px;margin:8px 0 14px;background:#000}
+  .card textarea{width:100%;height:52vh;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:14px;font:14px/1.6 ui-monospace,Menlo,monospace}
+  .row{display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+  .primary{background:var(--accent);border:none;color:#fff;font-weight:700}
+  .err{color:var(--accent2)}
+</style>
+<script>
+// Fristående läge: ersätter serverns /api med inbakade manus, lokal lagring och nedladdning.
+window.__MANUS = [{"file":"natverk-p1-15min.txt","text":"NÄTVERK P1 — \"VAD STJÄL TID HOS ER?\" (15 min. Tala långsammare än du tror. Pauserna är en del av manuset.)\n(Övning: dag 1–3 läs ordagrant. Dag 4–5 bara första och sista meningen i varje block. Dag 6+ utan manus, bara blockrubriken.)\n\n\nBLOCK 1 · ÖPPNING · 0:45\n\n(Gå fram. Säg ingenting i tre sekunder. Titta ut över rummet.)\n\nRäck upp handen – om du svarade på ett jobbmail efter nio i går kväll.\n\n(Vänta. Räck upp din egen hand.)\n\nJag också. Så vi är i gott sällskap.\n\nJag heter Melvin.\nDe kommande femton minuterna tänker jag inte prata om AI.\nJag tänker visa den.\nFörst på mina problem – sen på ett av era. Live. Här.\n\n\nBLOCK 2 · VEM JAG ÄR · 0:30\n\nKort om mig. Jag driver Samwize här i Göteborg.\nVi bygger AI som tar hand om det tråkiga – mail, offert och faktura – i bolag med fem till femtio anställda.\n\n(Peka på kortet.)\n\nEn offert tog mig förut en hel dag. Nu tar den en minut.\nInte för att jag blev snabbare. För att jag slutade göra den själv.\n\nJag ska visa er hur.\n\n\nBLOCK 3 · MORGONLISTAN · 2:15\n\nSå här startar min dag.\n\nDet här är ingen att-göra-lista jag har skrivit.\nDet är en lista på vad jag har LOVAT.\nAI:n har lyssnat på gårdagens samtal, läst mailen och mötesanteckningarna –\noch plockat ut varje gång jag sagt \"det fixar jag\".\n\n(Paus. Fråga rummet:)\n\nHur många av era löften från i går hade ni kommit ihåg – utan en sån här lista?\n\n(Låt det sjunka in. Två sekunder.)\n\nOch bredvid varje rad står det: \"Vill du att jag förbereder ett utkast?\"\nMail, offert, svar – det ligger klart när jag kommer in.\n\nJag säger ja. Till den här.\n\n(Klicka på översta raden – offerten.)\n\n\nBLOCK 4 · OFFERTEN · 1:15\n\nUnder en minut.\n\n(Peka på raden med startavgiften.)\n\nRätt kund. Rätt pris. Rätt mall.\nOch titta här – den vet att kunden förhandlade bort startavgiften i september.\nDen har inte gissat. Det står i kundkortet – för det sades i ett samtal.\n\nJag läser. Jag ändrar en rad om jag vill. Jag trycker skicka.\n\n(Kort paus.)\n\nAI:n föreslår. Jag bestämmer. Alltid.\n\n\nBLOCK 5 · BAKOM KULISSERNA · 1:00\n\nHär slutar de flesta AI-presentationer. Det är här jag vill börja.\n\nFör det ni nyss såg – det är inte AI:n. Det här är det.\n\n(Gå från vänster till höger, peka på varje ruta.)\n\nVarje samtal, varje mail, varje möte hamnar på kundkortet.\nDet passerar filter – vem är det, vad gäller det, hur bråttom är det.\nSen min prislogik – mina priser, mina rabatter, min marginal.\nSen min mall.\n\n(Peka på den röda rutan.)\n\nFörst här kommer AI:n in. Och sist – jag.\n\n(Vänd dig mot rummet.)\n\nAI:n är tio procent. Resten är era regler.\nDet är därför det fungerar.\n\n\nBLOCK 6 · ÖVERGÅNG · 0:15\n\n(Ta ett steg fram, närmare publiken.)\n\nNog om mina problem.\n\n(Paus.)\n\nNu vill jag höra era.\n\n\nBLOCK 7 · VARVET RUNT · 3:00\n\nReglerna är enkla. En mening.\nNamn, bolag – och en sak som stjäl tid av dig varje vecka.\nInte det mest spännande. Det mest irriterande.\n\nJag börjar:\nMelvin, Samwize. Varje morgon gick åt till att komma ihåg vad jag lovat folk i går.\n\nTio sekunder var. [Namn längst fram] – du börjar.\n\n(Emil skriver upp allt under de fem rubrikerna.)\n(Pratar någon mer än 15 sekunder: le – \"Grym, den tar vi!\" – vidare.)\n(Lyssna efter tre som sticker ut: konkret, vanlig, går att visa på två minuter.)\n(ÖVNING: låtsas att 15 personer svarar. Säg \"Tack – nästa\" högt mellan varje. Håll tiden.)\n\n\nBLOCK 8 · HANDUPPRÄCKNING · 0:30\n\nJag hörde tre som sticker ut.\n\nA – [problem A].\nB – [problem B].\nC – [problem C].\n\nHänderna upp för A … (räkna högt) … B … C.\n\n[Vinnarens namn] – kom upp hit. Du får styra.\n\n\nBLOCK 9 · LIVE-BYGGET · 2:15\n\nTvå minuter. Du styr, jag bygger.\nBerätta igen – vad händer i dag, steg för steg?\n\n(Byt till Claude. Starta från rätt byggkloss.)\n(Tänk högt:)\nNu säger jag till den vem kunden är …\nnu ger jag den er prislista …\nnu ber jag om ett utkast.\n\n(Visa resultatet stort.)\n\nDär. Det där fanns inte för två minuter sedan.\n\n(Paus – låt applåden komma. Tacka personen med namn.)\n\n(RESERV om tekniken strular: \"Live-demos – de har sin egen vilja.\" Le. Visa inspelningen.)\n\n\nBLOCK 10 · VAD ÄR DET VÄRT? · 1:00\n\n(Vinnaren står kvar. Vänd dig till hen.)\n\nHur mycket tid lägger du på det här – per dag?\n\n(Låt hen svara. Räkna högt, enkelt.)\n\n[X] minuter om dagen … det blir [Y] timmar i veckan … [Z] timmar om året.\nHur många hos er gör samma sak?\nGånger [antal] … det är [summa] timmar. Om året. På EN sak.\n\n(Peka på sliden.)\n\nMed en timkostnad på runt 450 kronor ser det ut så här.\n\n(Långsamt.)\n\nOch vad hade du gjort med de timmarna?\n\n(LÅT HEN SVARA. Säg ingenting på två sekunder efteråt.)\n(FUSKLAPP per person och år: 10 min/dag = 37 h · 15 min = 55 h · 30 min = 110 h · 60 min = 220 h.)\n(ÖVNING: hitta på tre olika svar och räkna högt varje gång tills det sitter.)\n\n\nBLOCK 11 · PROTOTYP ELLER PRODUKTION · 0:45\n\nNu ska jag vara ärlig med er. För det är här de flesta inte är det.\n\n(Peka på den röda rutan.)\n\nDet vi byggde nyss – det är den här rutan. En prototyp.\nDen imponerar på en fredag.\n\n(Svep med handen över de streckade rutorna.)\n\nDet som gör att den fungerar på en måndag är resten.\nKopplingen till era system. Ert kundregister. Era priser.\nBehörigheter och GDPR. Och någon som äger det när det strular.\n\nDär ligger värdet. Och det är det vi gör.\n\n\nBLOCK 12 · ERBJUDANDET · 1:00\n\nNi som vill ta det här vidare – så här gör vi.\n\nVerkstaden den [datum]. En liten grupp – och vi bygger på ERA problem, inte mina.\nEn-till-en-coachning. Jag och du, på ditt flöde.\nOch ett flöde uppsatt åt dig. Din morgonlista. Eller din offertmall.\nIgång – inte en idé på ett papper.\n\n(Peka på den röda rutan.)\n\nOrdinarie pris [__].\nBokar ni i kväll, via QR-koden – halva priset.\nInom en vecka, eftersom ni är padelmedlemmar – femton procent.\nSen fullpris.\n\n(Håll upp telefonen mot QR-koden. Tyst i tre sekunder – låt folk scanna.)\n\n\nBLOCK 13 · AVSLUT · 0:30\n\nOch ni som inte är redo – helt okej.\n\nI morgon får var och en av er en fråga från mig. Om just det ni sa i kväll.\nSvara med ett par rader – så tar vi ert problem som exempel nästa gång.\n\n(Paus. Titta ut över rummet.)\n\nTack. Jag heter Melvin – och jag står här borta efteråt.\n\n(Stå kvar två sekunder. Le. Sedan av scenen.)\n","mtime":1793465855714.6047}];
+(() => {
+  const real = window.fetch.bind(window);
+  const edits = () => { try { return JSON.parse(localStorage.getItem('tp_edits') || '{}'); } catch { return {}; } };
+  const ok = (obj) => new Response(JSON.stringify(obj), { headers: { 'Content-Type': 'application/json' } });
+  window.fetch = async (url, opts = {}) => {
+    const u = new URL(url, 'http://x');
+    if (u.pathname === '/api/manus') {
+      const e = edits();
+      const list = window.__MANUS.map((m) => e[m.file] ? { ...m, text: e[m.file] } : m);
+      Object.keys(e).filter((f) => !list.some((m) => m.file === f)).forEach((f) => list.unshift({ file: f, text: e[f], mtime: Date.now() }));
+      return ok(list);
+    }
+    if (u.pathname.startsWith('/api/manus/') && opts.method === 'PUT') {
+      const e = edits(); const f = decodeURIComponent(u.pathname.slice(11));
+      e[f] = opts.body; try { localStorage.setItem('tp_edits', JSON.stringify(e)); } catch {}
+      return ok({ ok: true, file: f });
+    }
+    if (u.pathname === '/api/upload') {
+      const blob = opts.body instanceof Blob ? opts.body : new Blob([opts.body], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = u.searchParams.get('name'); a.click();
+      return ok({ ok: true, path: 'Hämtade filer', bytes: blob.size });
+    }
+    return real(url, opts);
+  };
+})();
+</script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="brand">TELEPROMPTER</span>
+    <select id="manusSel" class="hide-rec" title="Manus"></select>
+    <button class="btn hide-rec" id="editBtn">Redigera</button>
+    <button class="btn hide-rec" id="newBtn">Nytt manus</button>
+    <span class="sp"></span>
+    <span id="vstat"><i></i><span id="vstatText">Röststyrning</span></span>
+    <span id="hint">Mellanslag / → = nästa block · ← = föregående · Enter = spela in · V = följ rösten</span>
+  </header>
+
+  <main id="stage">
+    <div id="flash"></div>
+    <div id="tag"></div>
+    <div id="cur"></div>
+    <div id="next"></div>
+    <div id="count"></div>
+    <div id="heard"></div>
+    <video id="cam" autoplay muted playsinline></video>
+    <div id="dots"></div>
+  </main>
+
+  <footer>
+    <select id="modeSel" class="hide-rec" title="Vad som spelas in">
+      <option value="video">Video + ljud</option>
+      <option value="audio">Bara ljud</option>
+    </select>
+    <select id="camSel" class="hide-rec" title="Kamera"></select>
+    <select id="micSel" class="hide-rec" title="Mikrofon"></select>
+    <div id="meter" title="Mikrofonnivå"><i></i></div>
+    <span class="sp"></span>
+    <button class="btn" id="voiceBtn" title="Texten följer det du säger och byter block själv (V)">Följ rösten</button>
+    <button class="btn hide-rec" id="smaller" title="Mindre text (−)">A−</button>
+    <button class="btn hide-rec" id="bigger" title="Större text (+)">A+</button>
+    <button class="btn hide-rec" id="mirrorBtn" title="Spegla texten (M) — för teleprompterglas">Spegla</button>
+    <button class="btn hide-rec" id="fsBtn" title="Helskärm (F)">Helskärm</button>
+    <button class="btn" id="retakeBtn" style="display:none" title="Ta om blocket (R)">↺ Ta om blocket</button>
+    <span id="timer">0:00</span>
+    <button id="rec"><span class="dot"></span><span id="recLabel">Spela in</span></button>
+  </footer>
+</div>
+
+<div class="modal" id="resultModal"><div class="card" id="resultCard"></div></div>
+<div class="modal" id="editModal"><div class="card">
+  <h2 id="editTitle">Redigera manus</h2>
+  <p>Varje block börjar med en rad som <b>BLOCK 1 · Rubrik</b>. Rader inom parentes visas som regianvisning.</p>
+  <textarea id="editText" spellcheck="false"></textarea>
+  <div class="row"><button class="btn" id="editCancel">Avbryt</button><button class="btn primary" id="editSave">Spara</button></div>
+</div></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('tp_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('tp_' + k, JSON.stringify(v)); } catch {} },
+};
+
+const S = {
+  manusList: [], manus: null, blocks: [], i: 0,
+  stream: null, rec: null, chunks: [], t0: 0, marks: [], recording: false, counting: false,
+  mode: store.get('mode', 'video'), fs: store.get('fs', 54), mirror: store.get('mirror', false),
+  audioCtx: null, analyser: null,
+};
+
+// ─── Manus ────────────────────────────────────────────────────────────────
+function parseManus(text) {
+  const lines = text.replace(/\r/g, '').split('\n');
+  const blocks = [];
+  let cur = null;
+  for (const raw of lines) {
+    const m = raw.trim().match(/^BLOCK\b\s*\d*\s*[·:.\-–—]?\s*(.*)$/i);
+    if (m) { cur = { title: m[1].trim() || `Block ${blocks.length + 1}`, lines: [] }; blocks.push(cur); continue; }
+    if (cur) cur.lines.push(raw.trim());
+  }
+  if (!blocks.length) {
+    text.replace(/\r/g, '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+      .forEach((p, n) => blocks.push({ title: `Block ${n + 1}`, lines: p.split('\n').map((l) => l.trim()) }));
+  }
+  return blocks.map((b) => {
+    while (b.lines.length && !b.lines[0]) b.lines.shift();
+    while (b.lines.length && !b.lines[b.lines.length - 1]) b.lines.pop();
+    return { title: b.title, lines: b.lines };
+  }).filter((b) => b.lines.some(Boolean));
+}
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const lineHtml = (l) => /^\(.*\)$/.test(l) ? `<span class="dir">${esc(l)}</span>` : l ? `<span class="ln">${esc(l)}</span>` : '<span class="ln">&nbsp;</span>';
+const title = (m) => m ? m.file.replace(/\.txt$/, '') : '';
+
+async function loadManusList(selectFile) {
+  const r = await fetch('/api/manus');
+  S.manusList = await r.json();
+  const sel = $('#manusSel');
+  sel.innerHTML = S.manusList.map((m) => `<option value="${esc(m.file)}">${esc(title(m))}</option>`).join('');
+  const want = selectFile || store.get('manus', null);
+  if (want && S.manusList.some((m) => m.file === want)) sel.value = want;
+  pickManus(sel.value);
+}
+function pickManus(file) {
+  S.manus = S.manusList.find((m) => m.file === file) || null;
+  S.blocks = S.manus ? parseManus(S.manus.text) : [];
+  S.i = 0;
+  if (S.manus) store.set('manus', S.manus.file);
+  render();
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────
+function render() {
+  document.documentElement.style.setProperty('--fs', S.fs + 'px');
+  document.body.classList.toggle('mirror', S.mirror);
+  $('#mirrorBtn').classList.toggle('on', S.mirror);
+  const b = S.blocks[S.i];
+  if (!b) {
+    $('#tag').textContent = '';
+    $('#cur').innerHTML = '<span class="ln" style="color:var(--dim)">Inget manus — klicka på ”Nytt manus”.</span>';
+    $('#next').innerHTML = ''; $('#dots').innerHTML = '';
+    return;
+  }
+  $('#tag').textContent = `Block ${S.i + 1} av ${S.blocks.length} · ${b.title}`;
+  if (S.voice) renderVoiceBlock(b); else $('#cur').innerHTML = b.lines.map(lineHtml).join('');
+  const n = S.blocks[S.i + 1];
+  $('#next').innerHTML = n
+    ? `<b>Nästa · ${esc(n.title)}</b>${esc(n.lines.filter((l) => l && !/^\(.*\)$/.test(l)).join(' '))}`
+    : `<b>Sista blocket</b>${S.recording ? 'Tryck mellanslag eller Esc för att avsluta inspelningen.' : ''}`;
+  $('#dots').innerHTML = S.blocks.map((_, k) => `<i data-k="${k}" class="${k < S.i ? 'done' : k === S.i ? 'now' : ''}" title="${esc(S.blocks[k].title)}"></i>`).join('');
+  fitText();
+}
+function fitText() {
+  const cur = $('#cur'), stage = $('#stage');
+  let fs = S.fs;
+  cur.style.fontSize = fs + 'px';
+  if (S.voice) { followScroll(true); return; } // i röstläge rullar texten i stället för att krympa
+  const room = stage.clientHeight * 0.62;
+  while (cur.scrollHeight > room && fs > 22) { fs -= 2; cur.style.fontSize = fs + 'px'; }
+}
+
+// ─── Media ────────────────────────────────────────────────────────────────
+async function startStream() {
+  if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
+  const mic = $('#micSel').value, cam = $('#camSel').value;
+  const audio = { echoCancellation: false, noiseSuppression: true, autoGainControl: false, channelCount: 1, ...(mic ? { deviceId: { exact: mic } } : {}) };
+  const video = S.mode === 'video'
+    ? { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, ...(cam ? { deviceId: { exact: cam } } : {}) }
+    : false;
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({ audio, video });
+  } catch (e) {
+    S.stream = null;
+    flash('Kommer inte åt kamera/mikrofon — tillåt i webbläsaren', 4000);
+    throw e;
+  }
+  $('#cam').srcObject = S.mode === 'video' ? S.stream : null;
+  await listDevices();
+  setupMeter();
+}
+async function listDevices() {
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const fill = (sel, kind, label) => {
+    const keep = sel.value || store.get(sel.id, '');
+    const list = devs.filter((d) => d.kind === kind);
+    sel.innerHTML = list.map((d, k) => `<option value="${esc(d.deviceId)}">${esc(d.label || `${label} ${k + 1}`)}</option>`).join('');
+    if (keep && list.some((d) => d.deviceId === keep)) sel.value = keep;
+  };
+  fill($('#camSel'), 'videoinput', 'Kamera');
+  fill($('#micSel'), 'audioinput', 'Mikrofon');
+  $('#camSel').style.display = S.mode === 'video' && !S.recording ? '' : 'none';
+}
+function setupMeter() {
+  if (!S.stream || !S.stream.getAudioTracks().length) return;
+  S.audioCtx = S.audioCtx || new AudioContext();
+  const src = S.audioCtx.createMediaStreamSource(S.stream);
+  S.analyser = S.audioCtx.createAnalyser();
+  S.analyser.fftSize = 1024;
+  src.connect(S.analyser);
+}
+const buf = new Float32Array(1024);
+(function meterLoop() {
+  if (S.analyser) {
+    S.analyser.getFloatTimeDomainData(buf);
+    let sum = 0; for (const v of buf) sum += v * v;
+    const db = 20 * Math.log10(Math.sqrt(sum / buf.length) + 1e-6);
+    const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+    $('#meter i').style.width = pct + '%';
+    $('#meter i').style.background = pct > 92 ? 'var(--accent2)' : 'var(--ok)';
+  }
+  if (S.recording) {
+    const s = Math.floor((performance.now() - S.t0) / 1000);
+    $('#timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+  requestAnimationFrame(meterLoop);
+})();
+
+// ─── Inspelning ───────────────────────────────────────────────────────────
+function pickMime() {
+  const c = S.mode === 'video'
+    ? ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+    : ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+  return c.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function startRecording() {
+  if (S.recording || S.counting || !S.blocks.length) return;
+  if (S.audioCtx && S.audioCtx.state === 'suspended') S.audioCtx.resume();
+  if (!S.stream) { try { await startStream(); } catch { return; } }
+  S.counting = true;
+  S.i = 0; render();
+  const c = $('#count');
+  c.classList.add('show');
+  for (const n of [3, 2, 1]) { c.textContent = n; await sleep(1000); }
+  c.classList.remove('show');
+  S.counting = false;
+
+  S.chunks = []; S.marks = [];
+  const mime = pickMime();
+  const opts = mime ? { mimeType: mime } : {};
+  if (S.mode === 'video') opts.videoBitsPerSecond = 8_000_000;
+  opts.audioBitsPerSecond = 192_000;
+  S.rec = new MediaRecorder(S.stream, opts);
+  S.rec.ondataavailable = (e) => { if (e.data && e.data.size) S.chunks.push(e.data); };
+  S.rec.onstop = finish;
+  S.rec.start(1000);
+  S.t0 = performance.now();
+  S.recording = true;
+  document.body.classList.add('rec');
+  $('#recLabel').textContent = 'Stoppa';
+  $('#retakeBtn').style.display = '';
+  $('#hint').textContent = 'Mellanslag = nästa · R = ta om blocket · Esc = stoppa';
+  $('#camSel').style.display = 'none';
+  mark(false);
+  render();
+}
+function mark(retake) {
+  const b = S.blocks[S.i];
+  S.marks.push({ block: S.i + 1, title: b.title, t: +((performance.now() - S.t0) / 1000).toFixed(2), retake });
+}
+function stopRecording() {
+  if (!S.recording || !S.rec || S.rec.state === 'inactive') return;
+  S.duration = +((performance.now() - S.t0) / 1000).toFixed(2);
+  S.rec.stop();
+}
+function next() {
+  if (S.counting) return;
+  if (S.i < S.blocks.length - 1) { S.i++; if (S.recording) mark(false); render(); }
+  else if (S.recording) stopRecording();
+}
+function prev() {
+  if (S.counting || S.i === 0) return;
+  S.i--; if (S.recording) mark(true); render();
+}
+function retake() {
+  if (!S.recording) return;
+  mark(true);
+  flash(`Tar om block ${S.i + 1} — börja när du är redo`);
+}
+
+const pad = (n) => String(n).padStart(2, '0');
+function stamp() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`; }
+const slug = (s) => s.toLowerCase().replace(/å|ä/g, 'a').replace(/ö/g, 'o').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'inspelning';
+const fmt = (s) => `${Math.floor(s / 60)}:${pad(Math.round(s % 60))}`;
+
+async function finish() {
+  S.recording = false;
+  document.body.classList.remove('rec');
+  $('#recLabel').textContent = 'Spela in';
+  $('#retakeBtn').style.display = 'none';
+  $('#hint').textContent = 'Mellanslag / → = nästa block · ← = föregående · Enter = spela in';
+  listDevices();
+
+  const mime = (S.rec && S.rec.mimeType) || (S.mode === 'video' ? 'video/webm' : 'audio/webm');
+  const blob = new Blob(S.chunks, { type: mime });
+  const ext = mime.includes('mp4') ? (S.mode === 'video' ? 'mp4' : 'm4a') : 'webm';
+  const base = `${slug(title(S.manus))}-${stamp()}`;
+  const url = URL.createObjectURL(blob);
+  const retakes = S.marks.filter((m) => m.retake).length;
+  const player = S.mode === 'video' ? `<video src="${url}" controls></video>` : `<audio src="${url}" controls></audio>`;
+  showResult(`<h2>Sparar…</h2>${player}`);
+
+  const meta = {
+    manus: S.manus.file, recordedAt: new Date().toISOString(), mode: S.mode, mime,
+    duration: S.duration, blocks: S.blocks.map((b, k) => ({ block: k + 1, title: b.title, text: b.lines.join('\n') })),
+    marks: S.marks,
+    note: 'marks.t = sekunder från inspelningens start. retake=true betyder omtag/backning — använd SISTA starten per block.',
+  };
+  try {
+    const r = await fetch(`/api/upload?name=${encodeURIComponent(base + '.' + ext)}`, { method: 'POST', body: blob });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    await fetch(`/api/upload?name=${encodeURIComponent(base + '.json')}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta, null, 2) });
+    showResult(`<h2>Sparat ✓</h2>${player}
+      <p>Nedladdat till Hämtade filer: <b>${esc(base + '.' + ext)}</b> · ${(j.bytes / 1048576).toFixed(1)} MB · ${fmt(S.duration)} · ${S.blocks.length} block${retakes ? ` · ${retakes} omtag markerade` : ''}<br>
+      Blockmarkeringarna ligger bredvid som <b>${esc(base)}.json</b> — lägg båda filerna i samwize-video/inkorg/ om Claude ska titta på dem.</p>
+      <div class="row"><a class="btn" href="${url}" download="${esc(base + '.' + ext)}">Ladda ner kopia</a><button class="btn" onclick="closeResult()">Stäng</button><button class="btn primary" onclick="closeResult();startRecording()">Spela in igen</button></div>`);
+  } catch (e) {
+    showResult(`<h2 class="err">Kunde inte spara i inkorgen</h2>${player}
+      <p>${esc(String(e.message || e))} — ladda ner filen och lägg den i samwize-video/inkorg/ manuellt.</p>
+      <div class="row"><a class="btn primary" href="${url}" download="${esc(base + '.' + ext)}">Ladda ner</a><button class="btn" onclick="closeResult()">Stäng</button></div>`);
+  }
+}
+function showResult(html) { $('#resultCard').innerHTML = html; $('#resultModal').classList.add('show'); }
+function closeResult() { $('#resultModal').classList.remove('show'); }
+
+let flashT;
+function flash(msg, ms = 1800) {
+  const f = $('#flash'); f.textContent = msg; f.classList.add('show');
+  clearTimeout(flashT); flashT = setTimeout(() => f.classList.remove('show'), ms);
+}
+
+// ─── Följ rösten ──────────────────────────────────────────────────────────
+// Chromes taligenkänning (sv-SE) lyssnar; det du säger matchas ord för ord mot blocket.
+// Hoppar du över ett ord letar den några ord framåt. När blockets sista ord är sagt byts blocket själv.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const NUM = { 0: 'noll', 1: 'en', 2: 'två', 3: 'tre', 4: 'fyra', 5: 'fem', 6: 'sex', 7: 'sju', 8: 'åtta', 9: 'nio', 10: 'tio',
+  11: 'elva', 12: 'tolv', 13: 'tretton', 14: 'fjorton', 15: 'femton', 16: 'sexton', 17: 'sjutton', 18: 'arton', 19: 'nitton',
+  20: 'tjugo', 30: 'trettio', 40: 'fyrtio', 50: 'femtio', 60: 'sextio', 90: 'nittio', 100: 'hundra' };
+const ALIAS = { ett: 'en', ettan: 'en' };
+function norm(t) {
+  let s = t.toLowerCase().replace(/[^0-9a-zåäöéü]/g, '');
+  if (/^\d+$/.test(s) && NUM[+s]) s = NUM[+s];
+  return ALIAS[s] || s;
+}
+function lev(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function same(heard, want) {
+  if (heard === want) return true;
+  const n = Math.min(heard.length, want.length);
+  if (n < 3) return false;
+  if (n >= 5 && (heard.startsWith(want) || want.startsWith(heard))) return true; // böjningar: "rutan"/"rutorna"
+  return lev(heard, want) <= (n >= 6 ? 2 : 1);
+}
+
+S.voice = store.get('voice', false);
+S.v = { block: -1, words: [], p: 0, start: 0, heard: [], interim: [], sessFinal: 0, rec: null, on: false, advancing: false, lastFinal: false };
+
+function renderVoiceBlock(b) {
+  const v = S.v;
+  if (v.block !== S.i) { v.block = S.i; v.start = 0; v.p = 0; v.heard = []; v.interim = []; v.advancing = false; voiceFlush(); }
+  const words = [];
+  let tok = 0;
+  const html = b.lines.map((l) => {
+    if (/^\(.*\)$/.test(l)) return `<span class="dir">${esc(l)}</span>`;
+    if (!l) return '<span class="ln">&nbsp;</span>';
+    let inBracket = false;
+    const parts = l.split(/\s+/).map((w) => {
+      const k = tok++;
+      const opt = inBracket || w.startsWith('[');      // [platshållare] matchas inte – de passeras
+      if (w.startsWith('[')) inBracket = !w.includes(']');
+      else if (inBracket && w.includes(']')) inBracket = false;
+      const n = norm(w);
+      if (n && !opt) words.push({ n, tok: k });
+      return `<span class="w" data-t="${k}">${esc(w)}</span>`;
+    });
+    return `<span class="ln">${parts.join(' ')}</span>`;
+  }).join('');
+  v.words = words;
+  $('#cur').innerHTML = html;
+  paintVoice();
+}
+function paintVoice() {
+  const v = S.v;
+  const curTok = v.p < v.words.length ? v.words[v.p].tok : Infinity;
+  document.querySelectorAll('#cur .w').forEach((el) => {
+    const t = +el.dataset.t;
+    el.classList.toggle('said', t < curTok);
+    el.classList.toggle('now', t === curTok);
+  });
+  followScroll(false);
+}
+function followScroll(instant) {
+  const cur = $('#cur');
+  const el = cur.querySelector('.w.now') || cur.querySelector('.w:last-child');
+  if (!el) return;
+  const top = el.offsetTop - cur.offsetTop - cur.clientHeight * 0.18;
+  cur.scrollTo({ top: Math.max(0, top), behavior: instant ? 'auto' : 'smooth' });
+}
+function align() {
+  // Girig matchning från blockets startpunkt över allt som hörts sedan dess.
+  // Hopp framåt (överhoppade ord) kräver ett långt ord, eller att även nästa hörda ord stämmer –
+  // annars drar vanliga småord som "jag" och "det" iväg markören.
+  const v = S.v, heard = v.heard.concat(v.interim), W = v.words;
+  let p = v.start;
+  for (let k = 0; k < heard.length && p < W.length; k++) {
+    const h = heard[k];
+    if (same(h, W[p].n)) { p++; continue; }
+    const look = h.length >= 5 ? 12 : 6;
+    for (let j = p + 1; j < Math.min(p + look, W.length); j++) {
+      if (!same(h, W[j].n)) continue;
+      const nxt = heard[k + 1];
+      if (h.length >= 5 || (nxt && j + 1 < W.length && same(nxt, W[j + 1].n))) { p = j + 1; break; }
+    }
+  }
+  return p;
+}
+function onHeard() {
+  const v = S.v;
+  const p = align();
+  if (p > v.p) { v.p = p; paintVoice(); }
+  $('#heard').textContent = v.heard.concat(v.interim).slice(-12).join(' ');
+  const left = v.words.length - v.p;
+  if (!v.advancing && (left <= 0 || (left === 1 && v.lastFinal && v.words.length > 3))) {
+    v.advancing = true;
+    setTimeout(() => {
+      if (S.v.block !== S.i) return;
+      if (S.i < S.blocks.length - 1) next();
+      else flash(S.recording ? 'Manuset är slut — Esc stoppar inspelningen' : 'Manuset är slut', 3000);
+    }, left <= 0 ? 450 : 900);
+  }
+}
+function setStatus(on, text) {
+  $('#vstat').classList.toggle('on', on);
+  $('#vstatText').textContent = text;
+}
+function voiceStart() {
+  if (!SR) { flash('Den här webbläsaren saknar taligenkänning — använd Chrome', 4000); return false; }
+  if (S.v.rec) return true;
+  const r = new SR();
+  r.lang = 'sv-SE'; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+  r.onstart = () => { S.v.on = true; S.v.sessFinal = 0; setStatus(true, 'Lyssnar'); };
+  r.onresult = (e) => {
+    const v = S.v;
+    let interim = '';
+    v.lastFinal = false;
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) {
+        if (i >= v.sessFinal) { v.heard.push(...res[0].transcript.split(/\s+/).map(norm).filter(Boolean)); v.sessFinal = i + 1; v.lastFinal = true; }
+      } else interim += ' ' + res[0].transcript;
+    }
+    v.interim = interim.split(/\s+/).map(norm).filter(Boolean);
+    onHeard();
+  };
+  r.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { flash('Mikrofonen är blockerad för taligenkänning', 4000); voiceOff(); }
+    else if (e.error === 'network') { setStatus(false, 'Ingen kontakt — kräver internet'); }
+    else if (e.error === 'audio-capture') { flash('Hittar ingen mikrofon', 4000); }
+  };
+  r.onend = () => { // Chrome stänger av efter tystnad/timeout – starta om så länge läget är på
+    S.v.on = false;
+    if (S.voice && S.v.rec === r) { setStatus(false, 'Startar om…'); setTimeout(() => { try { r.start(); } catch {} }, 150); }
+  };
+  S.v.rec = r;
+  try { r.start(); } catch {}
+  return true;
+}
+function voiceFlush() {
+  // Nytt block eller manuell flytt: släng det som hörts så att slutet av förra blocket inte räknas här.
+  const v = S.v;
+  v.heard = []; v.interim = []; v.lastFinal = false;
+  if (v.rec && v.on) { try { v.rec.abort(); } catch {} }
+}
+function voiceOff() {
+  S.voice = false; store.set('voice', false);
+  const r = S.v.rec; S.v.rec = null;
+  if (r) { try { r.abort(); } catch {} }
+  document.body.classList.remove('voice');
+  $('#voiceBtn').classList.remove('on');
+  setStatus(false, 'Röststyrning');
+  S.v.block = -1;
+  render();
+}
+function voiceOn() {
+  S.voice = true; store.set('voice', true);
+  document.body.classList.add('voice');
+  $('#voiceBtn').classList.add('on');
+  S.v.block = -1;
+  render();
+  voiceStart();
+}
+$('#voiceBtn').onclick = (e) => { e.currentTarget.blur(); S.voice ? voiceOff() : voiceOn(); };
+$('#cur').addEventListener('click', (e) => {
+  // Klicka på ett ord = fortsätt därifrån (om du tappat bort dig eller improviserat)
+  const el = e.target.closest('.w');
+  if (!S.voice || !el) return;
+  const t = +el.dataset.t, v = S.v;
+  let k = v.words.findIndex((w) => w.tok >= t);
+  if (k < 0) k = v.words.length;
+  v.start = k; v.p = k; v.advancing = false;
+  voiceFlush(); paintVoice();
+});
+// Test utan mikrofon: tpSimulate('räck upp handen om du', true)
+window.tpSimulate = (text, final = true) => {
+  const words = text.split(/\s+/).map(norm).filter(Boolean);
+  if (final) { S.v.heard.push(...words); S.v.interim = []; } else S.v.interim = words;
+  S.v.lastFinal = final;
+  onHeard();
+  return { block: S.i + 1, p: S.v.p, of: S.v.words.length };
+};
+
+// ─── Redigera / nytt manus ────────────────────────────────────────────────
+let editingFile = null;
+function openEditor(file, text, heading) {
+  editingFile = file; $('#editTitle').textContent = heading; $('#editText').value = text;
+  $('#editModal').classList.add('show'); $('#editText').focus();
+}
+$('#editBtn').onclick = () => S.manus && openEditor(S.manus.file, S.manus.text, `Redigera: ${title(S.manus)}`);
+$('#newBtn').onclick = () => {
+  const name = prompt('Namn på manuset (t.ex. "kund-intro")');
+  if (!name) return;
+  const file = slug(name) + '.txt';
+  openEditor(file, `BLOCK 1 · Hook\n\nFörsta meningen här.\n\n\nBLOCK 2 · Nästa del\n\nText…\n`, `Nytt manus: ${slug(name)}`);
+};
+$('#editCancel').onclick = () => $('#editModal').classList.remove('show');
+$('#editSave').onclick = async () => {
+  const r = await fetch(`/api/manus/${encodeURIComponent(editingFile)}`, { method: 'PUT', body: $('#editText').value });
+  const j = await r.json();
+  if (!j.ok) { alert(j.error); return; }
+  $('#editModal').classList.remove('show');
+  await loadManusList(editingFile);
+  flash('Manus sparat');
+};
+
+// ─── Kontroller ───────────────────────────────────────────────────────────
+$('#manusSel').onchange = (e) => pickManus(e.target.value);
+$('#rec').onclick = (e) => { e.currentTarget.blur(); S.recording ? stopRecording() : startRecording(); };
+$('#retakeBtn').onclick = (e) => { e.currentTarget.blur(); retake(); };
+$('#smaller').onclick = () => { S.fs = Math.max(24, S.fs - 4); store.set('fs', S.fs); render(); };
+$('#bigger').onclick = () => { S.fs = Math.min(110, S.fs + 4); store.set('fs', S.fs); render(); };
+$('#mirrorBtn').onclick = () => { S.mirror = !S.mirror; store.set('mirror', S.mirror); render(); };
+$('#fsBtn').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+$('#dots').onclick = (e) => { const k = e.target.dataset.k; if (k !== undefined && !S.recording) { S.i = +k; render(); } };
+$('#modeSel').value = S.mode;
+document.body.classList.toggle('audio', S.mode === 'audio');
+$('#modeSel').onchange = async (e) => {
+  S.mode = e.target.value; store.set('mode', S.mode);
+  document.body.classList.toggle('audio', S.mode === 'audio');
+  try { await startStream(); } catch {}
+};
+$('#camSel').onchange = () => { store.set('camSel', $('#camSel').value); startStream().catch(() => {}); };
+$('#micSel').onchange = () => { store.set('micSel', $('#micSel').value); startStream().catch(() => {}); };
+
+document.addEventListener('keydown', (e) => {
+  if ($('#editModal').classList.contains('show')) return;
+  if ($('#resultModal').classList.contains('show')) { if (e.key === 'Escape') closeResult(); return; }
+  const k = e.key;
+  if (k === ' ' || k === 'ArrowRight' || k === 'PageDown' || k === 'ArrowDown') { e.preventDefault(); next(); }
+  else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'ArrowUp') { e.preventDefault(); prev(); }
+  else if (k === 'Enter') { e.preventDefault(); if (!S.recording) startRecording(); }
+  else if (k === 'Escape' || k === 's' || k === 'S') { if (S.recording) { e.preventDefault(); stopRecording(); } }
+  else if (k === 'r' || k === 'R') retake();
+  else if (k === '+' || k === '=') $('#bigger').click();
+  else if (k === '-') $('#smaller').click();
+  else if (k === 'm' || k === 'M') $('#mirrorBtn').click();
+  else if (k === 'f' || k === 'F') $('#fsBtn').click();
+  else if (k === 'v' || k === 'V') $('#voiceBtn').click();
+});
+window.addEventListener('resize', fitText);
+window.addEventListener('beforeunload', (e) => { if (S.recording) { e.preventDefault(); e.returnValue = ''; } });
+
+// ─── Start ────────────────────────────────────────────────────────────────
+(async () => {
+  const q = new URLSearchParams(location.search);
+  await loadManusList(q.get('manus'));
+  try { await startStream(); } catch {}
+  if (S.voice || q.get('voice') === '1') voiceOn();
+})();
+</script>
+</body>
+</html>
